@@ -48,6 +48,23 @@ class PCEP(object):
    //                        (Object body)                        //
    |                                                               |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+    draft-ietf-pce-stateful-pce:
+
+
+
+   <PCRpt Message> ::= <Common Header>
+                       <state-report-list>
+Where:
+
+   <state-report-list> ::= <state-report>[<state-report-list>]
+
+   <state-report> ::= [<SRP>]
+                      <LSP>
+                      <path>
+ Where:
+   <path>::= <ERO><attribute-list>[<RRO>]
+
     """
     def __init__(self):
         self._common_hdr_fmt="!BBH"
@@ -56,6 +73,44 @@ class PCEP(object):
         self._error_obj_fmt="!BBBB"
         """ TLV Stateful PCE Capability: Update Capability 1, Include DB version: 0"""
         self._spc_tlv = struct.pack('!HHI',16,4,1)
+        """
+       SRP Object-Class is [TBD].
+       SRP Object-Type is 1.
+       The format of the SRP object body is shown in Figure 10:
+
+              0                   1                   2                   3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |                          Flags                                |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |                        SRP-ID-number                          |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |                                                               |
+      //                      Optional TLVs                          //
+      |                                                               |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+        """
+        self._srp_obj_fmt = "!II"
+        """
+   LSP Object-Class is [TBD].
+   LSP Object-Type is 1.
+   The format of the LSP object body is shown in Figure 11:
+
+      0                   1                   2                   3
+      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     |                PLSP-ID                |     Flags |  O|A|R|S|D|
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     //                        TLVs                                 //
+     |                                                               |
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    
+     PLSP-ID = unpacked header >> 12
+     FLAGS = unpacked hdr & (2^12-1)
+
+        """
+        self._lsp_ojb_fmt = "!I"
         self._state = 'not_initialized'
     
     def parse_rcved_msg(self,msg):
@@ -78,7 +133,10 @@ class PCEP(object):
             self.parse_error_msg(common_hdr,msg)
         elif common_hdr[1] == 7:
             print('close msg recved')
-        """ draft-ietf-pce-stateful-pce extensions """
+        elif common_hdr[1] == 10:
+            self.parse_state_report_msg(common_hdr,msg)
+            print('pcc state report msg recved')
+
 
     """
    The format of the OPEN object body is as follows:
@@ -99,7 +157,7 @@ class PCEP(object):
 
     def parse_open_msg(self,common_hdr, msg):
         open_msg = struct.unpack_from(self._open_obj_fmt,msg[8:])
-        print(struct.unpack_from(self._common_obj_hdr_fmt,msg[4:]))
+        self.parse_common_obj_hdr(msg)
         self._peer_ka_timer = open_msg[1]
         self._test_openmsg = msg
         if(common_hdr[2] > 12):
@@ -107,8 +165,17 @@ class PCEP(object):
         self._state = 'initialized'
         print(open_msg)
 
+    def parse_common_obj_hdr(self,msg,offset=0):
+        obj_hdr = struct.unpack_from(self._common_obj_hdr_fmt,msg[4+offset:])
+        object_class = obj_hdr[0]
+        object_type = obj_hdr[1]>>4
+        print("obj header: oc:%s  ot:%s"%(object_class,object_type,))
+
+    def parse_state_report_msg(self,common_hdr, msg):
+        self.parse_common_obj_hdr(msg)
+
     def parse_error_msg(self,common_hdr, msg):
-        print(struct.unpack_from(self._common_obj_hdr_fmt,msg[4:]))
+        self.parse_common_obj_hdr(msg)
         error_msg = struct.unpack_from(self._error_obj_fmt,msg[8:])
         print(error_msg)
     

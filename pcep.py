@@ -64,20 +64,21 @@ class PCEP(object):
         if common_hdr[1] == 1:
             print('open msg recved')
             self.parse_open_msg(common_hdr, msg)
-        if common_hdr[1] == 2:
+        elif common_hdr[1] == 2:
             print('ka msg recved')
             self.parse_ka_msg(common_hdr, msg)
-        if common_hdr[1] == 3:
+        elif common_hdr[1] == 3:
             print('pcreq msg recved')
-        if common_hdr[1] == 4:
+        elif common_hdr[1] == 4:
             print('pcrep msg recved')
-        if common_hdr[1] == 5:
+        elif common_hdr[1] == 5:
             print('ntf msg recved')
-        if common_hdr[1] == 6:
+        elif common_hdr[1] == 6:
             print('error msg recved')
             self.parse_error_msg(common_hdr,msg)
-        if common_hdr[1] == 7:
+        elif common_hdr[1] == 7:
             print('close msg recved')
+        """ draft-ietf-pce-stateful-pce extensions """
 
     """
    The format of the OPEN object body is as follows:
@@ -103,6 +104,7 @@ class PCEP(object):
         self._test_openmsg = msg
         if(common_hdr[2] > 12):
             print(struct.unpack_from('!HHI',msg[12:]))
+        self._state = 'initialized'
         print(open_msg)
 
     def parse_error_msg(self,common_hdr, msg):
@@ -111,6 +113,7 @@ class PCEP(object):
         print(error_msg)
     
     def generate_open_msg(self,ka_timer):
+        self._ka_timer = ka_timer
         common_hdr = struct.pack(self._common_hdr_fmt,32,1,20)
         common_obj_hdr = struct.pack(self._common_obj_hdr_fmt,1,16,16)
         open_obj = struct.pack(self._open_obj_fmt,32,ka_timer,ka_timer*4,32)

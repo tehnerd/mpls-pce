@@ -14,7 +14,7 @@ MAXCLIENTS=10
 def send_ka(pcep_context, sock):
     while True:
         sock.send(pcep_context.generate_ka_msg())
-        gevent.sleep(pcep_context._peer_ka_timer)
+        gevent.sleep(pcep_context._ka_timer)
 
 def pcc_handler(clsock):
     pcep_context = pcep.PCEP()

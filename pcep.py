@@ -145,6 +145,9 @@ Where:
         elif common_hdr[1] == 10:
             self.parse_state_report_msg(common_hdr,msg)
             print('pcc state report msg recved')
+        elif common_hdr[1] == 11:
+            print('pcc update msg recved')
+
 
     """
    The format of the OPEN object body is as follows:
@@ -313,13 +316,84 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
   
 
         """
+   The contents of an EXPLICIT_ROUTE object are a series of variable-
+   length data items called subobjects:
+    0                   1
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-------------//----------------+
+   |L|    Type     |     Length    | (Subobject contents)          |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-------------//----------------+
+        """
+    def parse_ero_subobject(self, ero_obj):
+        tlv_type = struct.upack_from("!BB",ero_obj)
+        #loose or strict:
+        l_flag = tlv_type[0]>>7
+        sobj_type = tlv_type[0]&127
+        sobj_length = tlv_type[1]
+        #atm only ipv4 subobject will be implemented
+        if sobj_type == 1:
+            """
+        0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |L|    Type     |     Length    | IPv4 address (4 bytes)        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | IPv4 address (continued)      | Prefix Length |      Resvd    |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            """
+            ero_sobj = struct.unpack_from("!BBIBB",ero_obj)
+            return (sobj_length, l_flag, ero_sobj)
+        #placeholder for safety, so we wont iterate forever if we dont know sobj_type (aka != 1)
+        return(1000,None,None)
+
+        """
         used in pcrep
         Object-Class = 7
         Object-Type = 1
-        Not implemented yet
+        ero_size = value of length field in common obj hdr
         """
-    def parse_ero_object(self, msg, offset=0):
-            pass
+
+    def parse_ero_object(self, msg, offset=0, ero_size=0):
+        parsed_ero_size = 0
+        while parsed_ero_size + 4 < ero_size:
+            sobj = self.parse_ero_subobject(msg[8+offset+parsed_ero_size:])
+            parsed_ero_size += sobj[0]
+            print(sobj) 
+
+
+    """
+    only ipv4 and lable subobjects will be implemented atm:
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |      Type     |     Length    | IPv4 address (4 bytes)        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | IPv4 address (continued)      | Prefix Length |      Flags    |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |     Type      |     Length    |    Flags      |   C-Type      |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |       Contents of Label Object                                |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    """
+    def parse_rro_subobject(self,rro_obj):
+        tlv_type = struct.upack_from("!BB",rro_obj)
+        sobj_type = tlv_type[0]
+        sobj_length = tlv_type[1]
+        #atm only ipv4 and label subobjects will be implemented
+        if sobj_type == 1:
+            rro_sobj = struct.unpack_from("!BBIBB",rro_obj)
+            return (sobj_length, rro_sobj)
+        if sobj_type == 3:
+            rro_sobj = struct.unpack_from("!BBBBI",rro_obj)
+            return (sobj_length, rro_sobj)         
+        #placeholder for safety, so we wont iterate forever if we dont know sobj_type (aka != 1)
+        return(1000,None)
+
 
     """
         used in pcreq
@@ -328,7 +402,11 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         Not implemented yet
     """
     def parse_rro_object(self, msg, offset=0):
-            pass
+        parsed_rro_size = 0
+        while parsed_rro_size + 4 < rro_size:
+            sobj = self.parse_rro_subobject(msg[8+offset+parsed_ero_size:])
+            parsed_ero_size += sobj[0]
+            print(sobj) 
 
     """
    LSPA Object-Class is 9.

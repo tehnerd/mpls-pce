@@ -66,7 +66,7 @@ Where:
    <path>::= <ERO><attribute-list>[<RRO>]
 
     """
-    def __init__(self):
+    def __init__(self, open_sid = 0):
         self._common_hdr_fmt="!BBH"
         self._common_obj_hdr_fmt="!BBH"
         self._open_obj_fmt="!BBBB"
@@ -111,6 +111,7 @@ Where:
 
         """
         self._lsp_ojb_fmt = "!I"
+        self._open_sid = open_sid % 255
         self._state = 'not_initialized'
     
     def parse_rcved_msg(self,msg):
@@ -152,7 +153,10 @@ Where:
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
                     Figure 9: OPEN Object Format
-
+    In common object header:
+    Object-Class is 1
+    Object-Type is 1
+    
     """
 
     def parse_open_msg(self,common_hdr, msg):
@@ -165,25 +169,49 @@ Where:
         self._state = 'initialized'
         print(open_msg)
 
+    """
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Object-Class  |   OT  |Res|P|I|   Object Length (bytes)       |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   //                        (Object body)                        //
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                  Figure 8: PCEP Common Object Header
+    """
     def parse_common_obj_hdr(self,msg,offset=0):
         obj_hdr = struct.unpack_from(self._common_obj_hdr_fmt,msg[4+offset:])
         object_class = obj_hdr[0]
         object_type = obj_hdr[1]>>4
-        print("obj header: oc:%s  ot:%s"%(object_class,object_type,))
-
-    def parse_state_report_msg(self,common_hdr, msg):
-        self.parse_common_obj_hdr(msg)
+        object_length = obj_hdr[2]
+        # 3 = 00000011
+        PI_flags = obj_hdr[1]&3 
+        print("obj header: oc:%s  ot:%s len:%s flags:%s"%(object_class,
+                                                          object_type,
+                                                          object_length,
+                                                          PI_flags,))
+        return (object_class, object_type, object_length, PI_flags)
 
     def parse_error_msg(self,common_hdr, msg):
         self.parse_common_obj_hdr(msg)
         error_msg = struct.unpack_from(self._error_obj_fmt,msg[8:])
         print(error_msg)
-    
+ 
+    def parse_state_report_msg(self,common_hdr, msg):
+        offset = 0
+        while offset+4 < common_hdr[2]:
+            parsed_obj_hdr=self.parse_common_obj_hdr(msg,offset)
+            offset+=parsed_obj_hdr[2]
+
+   
     def generate_open_msg(self,ka_timer):
         self._ka_timer = ka_timer
         common_hdr = struct.pack(self._common_hdr_fmt,32,1,20)
         common_obj_hdr = struct.pack(self._common_obj_hdr_fmt,1,16,16)
-        open_obj = struct.pack(self._open_obj_fmt,32,ka_timer,ka_timer*4,32)
+        open_obj = struct.pack(self._open_obj_fmt,32,ka_timer,ka_timer*4,self._open_sid)
         return join((common_hdr,common_obj_hdr,open_obj,self._spc_tlv),sep='')
 
     def generate_ka_msg(self):

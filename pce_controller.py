@@ -16,8 +16,8 @@ def send_ka(pcep_context, sock):
         sock.send(pcep_context.generate_ka_msg())
         gevent.sleep(pcep_context._ka_timer)
 
-def pcc_handler(clsock):
-    pcep_context = pcep.PCEP()
+def pcc_handler(clsock,sid):
+    pcep_context = pcep.PCEP(open_sid = sid)
     print(clsock[1])
     msg=clsock[0].recv(1000)
     pcep_context.parse_rcved_msg(msg)
@@ -30,12 +30,14 @@ def pcc_handler(clsock):
     clsock[0].close()
 
 def main():
+    CURRENT_SID = 0
     servsock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     servsock.bind((SERVADDR,SERVPORT))
     servsock.listen(MAXCLIENTS)
     while True:
         client = servsock.accept()
-        gevent.spawn(pcc_handler,client)
+        gevent.spawn(pcc_handler,client,CURRENT_SID)
+        CURRENT_SID += 1
 
 if __name__ == '__main__':
     main()

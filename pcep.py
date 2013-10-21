@@ -1,4 +1,5 @@
 import struct
+import socket
 from string import join
 
 
@@ -121,8 +122,22 @@ Where:
         self._lsp_ojb_fmt = "!I"
         self._open_sid = open_sid % 255
         self._state = 'not_initialized'
+        self._functions_dict = dict()
+        self._functions_dict[4,1] = self.parse_endpoints_object
+        self._functions_dict[5,1] = self.parse_bw_object
+        self._functions_dict[5,2] = self.parse_bw_object
+        self._functions_dict[6,1] = self.parse_metric_object
+        self._functions_dict[7,1] = self.parse_ero_object
+        self._functions_dict[8,1] = self.parse_rro_object
+        self._functions_dict[9,1] = self.parse_lspa_object
+
+    def ip2int(self, addr):                                                               
+        return struct.unpack_from("!I", socket.inet_aton(addr))[0]                       
+
+    def int2ip(self, addr):                                                               
+        return socket.inet_ntoa(struct.pack("!I", addr)) 
     
-    def parse_rcved_msg(self,msg):
+    def parse_rcved_msg(self, msg):
         common_hdr = struct.unpack(self._common_hdr_fmt,msg[0:4])
         print(common_hdr)
         if common_hdr[1] == 1:
@@ -229,7 +244,7 @@ Where:
         4 - header size, 4 - common obj header size, thats why 8 + offset 
         """
 
-    def parse_rp_object(self, msg, offset=0):
+    def parse_rp_object(self, msg, com_obj_hdr, offset=0):
         rp_object = struct.unpack_from(self._rp_obj_fmt,msg[8+offset:]) 
         rp_req_id = rp_object[1]
         rp_priority_flag = rp_object[0]&7
@@ -263,8 +278,8 @@ Where:
                  Figure 12: END-POINTS Object Body Format for IPv4  
         """
   
-    def parse_endpoints_obj(self, msg, offset=0, ot=1):
-        if ot == 1:
+    def parse_endpoints_object(self, msg, com_obj_hdr, offset=0):
+        if com_obj_hdr[1] == 1:
             endpointsv4_obj = struct.unpack_from(self._endpointsv4_obj_fmt,
                                                  msg[8+offset:])
             src_ipv4 = endpointsv4_obj[0]
@@ -287,7 +302,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
 
     """
 
-    def parse_bw_object(self, msg, offset=0):
+    def parse_bw_object(self, msg, com_obj_hdr, offset=0):
         bw_obj = struct.unpack_from(self._bw_obj_fmt,msg[8+offset:])
         return (bw_obj[0],)
 
@@ -306,7 +321,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
    |                          metric-value                         |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
         """
-    def parse_metric_object(self, msg, offset=0):
+    def parse_metric_object(self, msg, com_obj_hdr, offset=0):
         metric_obj = struct.unpack_from(self._metric_obj_fmt,msg[8+offset:])
         metric_type = metric_obj[2]
         bound_flag = metric_obj[1]&1
@@ -325,7 +340,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-------------//----------------+
         """
     def parse_ero_subobject(self, ero_obj):
-        tlv_type = struct.upack_from("!BB",ero_obj)
+        tlv_type = struct.unpack_from("!BB",ero_obj)
         #loose or strict:
         l_flag = tlv_type[0]>>7
         sobj_type = tlv_type[0]&127
@@ -353,9 +368,9 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         ero_size = value of length field in common obj hdr
         """
 
-    def parse_ero_object(self, msg, offset=0, ero_size=0):
+    def parse_ero_object(self, msg, com_obj_hdr, offset=0):
         parsed_ero_size = 0
-        while parsed_ero_size + 4 < ero_size:
+        while parsed_ero_size + 4 < com_obj_hdr[2]:
             sobj = self.parse_ero_subobject(msg[8+offset+parsed_ero_size:])
             parsed_ero_size += sobj[0]
             print(sobj) 
@@ -381,7 +396,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     """
     def parse_rro_subobject(self,rro_obj):
-        tlv_type = struct.upack_from("!BB",rro_obj)
+        tlv_type = struct.unpack_from("!BB",rro_obj)
         sobj_type = tlv_type[0]
         sobj_length = tlv_type[1]
         #atm only ipv4 and label subobjects will be implemented
@@ -399,14 +414,14 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         used in pcreq
         Object-Class = 8
         Object-Type = 1
-        Not implemented yet
     """
-    def parse_rro_object(self, msg, offset=0):
+    def parse_rro_object(self, msg, com_obj_hdr, offset=0):
         parsed_rro_size = 0
-        while parsed_rro_size + 4 < rro_size:
-            sobj = self.parse_rro_subobject(msg[8+offset+parsed_ero_size:])
-            parsed_ero_size += sobj[0]
-            print(sobj) 
+        while parsed_rro_size + 4 < com_obj_hdr[2]:
+            sobj = self.parse_rro_subobject(msg[8+offset+parsed_rro_size:])
+            parsed_rro_size += sobj[0]
+            print(sobj)
+            print(self.int2ip(sobj[1][2])) 
 
     """
    LSPA Object-Class is 9.
@@ -429,7 +444,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
    |                                                               |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     """
-    def parse_lspa_object(self, msg, offset=0):
+    def parse_lspa_object(self, msg, com_obj_hdr, offset=0):
         lspa_obj = struct.unpack_from(self._lspa_obj_fmt,msg[8+offset:])
         setup_pri = lspa_obj[3]
         hold_pri = lspa_obj[4]
@@ -479,8 +494,10 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         offset = 0
         while offset+4 < common_hdr[2]:
             parsed_obj_hdr=self.parse_common_obj_hdr(msg,offset)
-            if (parsed_obj_hdr[0] == 9 and parsed_obj_hdr[1] == 1):
-                lspa = self.parse_lspa_object(msg,offset)
+            if (parsed_obj_hdr[0],parsed_obj_hdr[1]) in self._functions_dict:
+                #lspa = self.parse_lspa_object(msg, parsed_obj_hdr, offset)
+                oc_ot = (parsed_obj_hdr[0],parsed_obj_hdr[1])
+                self._functions_dict[oc_ot](msg, parsed_obj_hdr, offset)
             offset+=parsed_obj_hdr[2]
    
     def generate_nopath_obj(self, NI_flag=0, C_flag=0):

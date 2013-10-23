@@ -101,25 +101,7 @@ Where:
         self._bw_obj_fmt = "!I"
         self._metric_obj_fmt = "!HBBI"
         self._lspa_obj_fmt = "!IIIBBBB"
-        """
-   LSP Object-Class is [TBD].
-   LSP Object-Type is 1.
-   The format of the LSP object body is shown in Figure 11:
-
-      0                   1                   2                   3
-      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     |                PLSP-ID                |     Flags |  O|A|R|S|D|
-     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     //                        TLVs                                 //
-     |                                                               |
-     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    
-     PLSP-ID = unpacked header >> 12
-     FLAGS = unpacked hdr & (2^12-1)
-
-        """
-        self._lsp_ojb_fmt = "!I"
+        self._lsp_obj_fmt = "!I"
         self._open_sid = open_sid % 255
         self._state = 'not_initialized'
         self._functions_dict = dict()
@@ -130,6 +112,7 @@ Where:
         self._functions_dict[7,1] = self.parse_ero_object
         self._functions_dict[8,1] = self.parse_rro_object
         self._functions_dict[9,1] = self.parse_lspa_object
+        self._functions_dict[32,1] = self.parse_lsp_object
 
     def ip2int(self, addr):                                                               
         return struct.unpack_from("!I", socket.inet_aton(addr))[0]                       
@@ -492,6 +475,49 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
 
     def parse_iro_object(self, msg, offset=0):
         pass
+    """
+       LSP Object-Class is 32.
+
+   LSP Object-Type is 1.
+
+   The format of the LSP object body is shown in Figure 11:
+
+      0                   1                   2                   3
+      0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     |                PLSP-ID                |     Flags |  O|A|R|S|D|
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     //                        TLVs                                 //
+     |                                                               |
+     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    """
+    def parse_lsp_object(self, msg, com_obj_hdr, offset=0):
+        lsp_obj = struct.unpack_from(self._lsp_obj_fmt,msg[8+offset:])
+        plsp_id = lsp_obj[0] >> 12
+        """
+           Flags (12 bits):
+
+   D (Delegate - 1 bit):
+   S (SYNC - 1 bit): 
+   R(Remove - 1 bit): 
+   A(Administrative - 1 bit): 
+   O(Operational - 3 bits):  
+      0 - DOWN:  not active.
+      1 - UP:  signalled.
+      2 - ACTIVE:  up and carrying traffic.
+      3 - GOING-DOWN:  LSP is being torn down, resources are being
+      4 - GOING-UP:  LSP is being signalled.
+      5-7 - Reserved:  these values are reserved for future use.
+        """
+        d_flag = lsp_obj[0] & 1
+        s_flag = lsp_obj[0] & 2
+        r_flag = lsp_obj[0] & 4
+        a_flag = lsp_obj[0] & 8
+        o_flag = lsp_obj[0] & 112
+        if com_obj_hdr > 8:
+            print('lsp_obj has TLVs')
+            #TODO: add tlv's parsing
+        return ('lsp_obj',(plsp_id,d_flag,s_flag,r_flag,a_flag,o_flag))
 
     def parse_error_msg(self, common_hdr, msg):
         self.parse_common_obj_hdr(msg)
@@ -514,6 +540,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
             offset+=parsed_obj_hdr[2]
         print('parsed_state_report:')
         print(parsed_state_report)
+        return('state_report',parsed_state_report)
    
     def generate_nopath_obj(self, NI_flag=0, C_flag=0):
         """

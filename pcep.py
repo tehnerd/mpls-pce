@@ -252,8 +252,8 @@ Where:
         rp_bidir_flag = rp_object[0]&16
         #strict/loose; 1 - loose is acceptable
         rp_o_flag = rp_object[0]&32
-        return (rp_req_id, rp_priority_flag, rp_reopt_flag, rp_bidir_flag,
-                rp_o_flag)
+        return ('rp',(rp_req_id, rp_priority_flag, rp_reopt_flag, rp_bidir_flag,
+                rp_o_flag))
 
         """
         used in pcreq
@@ -284,7 +284,7 @@ Where:
                                                  msg[8+offset:])
             src_ipv4 = endpointsv4_obj[0]
             dst_ipv4 = endpointsv4_obj[1]
-            return (src_ipv4, dst_ipv4)
+            return ('endpoints',(src_ipv4, dst_ipv4))
     """
 The BANDWIDTH object may be carried within PCReq and PCRep messages.
    BANDWIDTH Object-Class is 5.
@@ -304,7 +304,8 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
 
     def parse_bw_object(self, msg, com_obj_hdr, offset=0):
         bw_obj = struct.unpack_from(self._bw_obj_fmt,msg[8+offset:])
-        return (bw_obj[0],)
+        print(bw_obj)
+        return ('bw',(bw_obj[0],))
 
 
 
@@ -327,7 +328,8 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         bound_flag = metric_obj[1]&1
         comp_met_flag = metric_obj[1]&2
         met_value = metric_obj[3]
-        return (metric_type, bound_flag, comp_met_flag, met_value)
+        print(met_value)
+        return ('metric',(metric_type, bound_flag, comp_met_flag, met_value))
   
 
         """
@@ -370,10 +372,13 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
 
     def parse_ero_object(self, msg, com_obj_hdr, offset=0):
         parsed_ero_size = 0
+        ero_list = list()
         while parsed_ero_size + 4 < com_obj_hdr[2]:
             sobj = self.parse_ero_subobject(msg[8+offset+parsed_ero_size:])
             parsed_ero_size += sobj[0]
+            ero_list.append(sobj)
             print(sobj) 
+        return ('ero',ero_list)
 
 
     """
@@ -417,11 +422,14 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
     """
     def parse_rro_object(self, msg, com_obj_hdr, offset=0):
         parsed_rro_size = 0
+        rro_list = list()
         while parsed_rro_size + 4 < com_obj_hdr[2]:
             sobj = self.parse_rro_subobject(msg[8+offset+parsed_rro_size:])
             parsed_rro_size += sobj[0]
+            rro_list.append(sobj)
             print(sobj)
-            print(self.int2ip(sobj[1][2])) 
+            print(self.int2ip(sobj[1][2]))
+        return ('rro',rro_list)
 
     """
    LSPA Object-Class is 9.
@@ -451,7 +459,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         #local protection desired
         L_flag = lspa_obj[5]&1
         print("lspa obj: %s %s %s"%(setup_pri,hold_pri,L_flag,))
-        return (setup_pri, hold_pri, L_flag)
+        return ('lspa',(setup_pri, hold_pri, L_flag))
 
 
         """
@@ -492,13 +500,20 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
  
     def parse_state_report_msg(self,common_hdr, msg):
         offset = 0
+        parsed_state_report = list()
         while offset+4 < common_hdr[2]:
             parsed_obj_hdr=self.parse_common_obj_hdr(msg,offset)
             if (parsed_obj_hdr[0],parsed_obj_hdr[1]) in self._functions_dict:
                 #lspa = self.parse_lspa_object(msg, parsed_obj_hdr, offset)
                 oc_ot = (parsed_obj_hdr[0],parsed_obj_hdr[1])
-                self._functions_dict[oc_ot](msg, parsed_obj_hdr, offset)
+                parsed_obj = self._functions_dict[oc_ot](msg,parsed_obj_hdr,
+                                                         offset)
+                parsed_state_report.append(parsed_obj)
+            else:
+                parsed_state_report.append(('unknow obj',))
             offset+=parsed_obj_hdr[2]
+        print('parsed_state_report:')
+        print(parsed_state_report)
    
     def generate_nopath_obj(self, NI_flag=0, C_flag=0):
         """

@@ -128,7 +128,7 @@ Where:
             self.parse_open_msg(common_hdr, msg)
         elif common_hdr[1] == 2:
             print('ka msg recved')
-            self.parse_ka_msg(common_hdr, msg)
+            return self.parse_ka_msg(common_hdr, msg)
         elif common_hdr[1] == 3:
             print('pcreq msg recved')
         elif common_hdr[1] == 4:
@@ -141,11 +141,11 @@ Where:
         elif common_hdr[1] == 7:
             print('close msg recved')
         elif common_hdr[1] == 10:
-            self.parse_state_report_msg(common_hdr,msg)
             print('pcc state report msg recved')
+            return self.parse_state_report_msg(common_hdr,msg)
         elif common_hdr[1] == 11:
             print('pcc update msg recved')
-
+        return ('NotImplemented',None) 
 
     """
    The format of the OPEN object body is as follows:
@@ -577,6 +577,6 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         return common_hdr
 
     def parse_ka_msg(self,common_hdr,msg):
-        pass
+        return ('ka_msg',)
         
         

@@ -1,0 +1,35 @@
+package mplspce;
+
+message LSP {
+    optional string pcc_ip = 1;
+
+    message LSPObject {
+        optional uint32 plsp_id = 1;
+        optional bool delegated = 2;
+        optional bool administrative = 3;
+        optional uint32 operational = 4;
+    }
+    
+    message LSPAttributeObject {
+        optional uint32 setup_prio = 1;
+        optional uint32 hold_prio = 2;
+        optional bool local_protection = 3;
+    }
+
+    message EROSubObject {
+        optional bool loose =1;
+        optional string node_ip =2;
+        optional uint32 node_mask =3;
+    }
+
+    message RROSubObject {
+        optional string node_ip =1;
+        optional uint32 node_mask =2;
+    }
+    
+    optional LSPObject lsp_obj = 2;
+    optional LSPAttributeObject lspa_obj = 3;
+    repeated EROSubObject ero =4;
+    repeated RROSubObject rro =5;
+    optional uint32 bandwidth =6;
+}

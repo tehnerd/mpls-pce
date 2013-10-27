@@ -76,7 +76,7 @@ Where:
         """ TLV Stateful PCE Capability: Update Capability 1, Include DB version: 0"""
         self._spc_tlv = struct.pack('!HHI',16,4,1)
         """
-       SRP Object-Class is [TBD].
+       SRP Object-Class is 33.
        SRP Object-Type is 1.
        The format of the SRP object body is shown in Figure 10:
 
@@ -103,6 +103,7 @@ Where:
         self._lspa_obj_fmt = "!IIIBBBB"
         self._lsp_obj_fmt = "!I"
         self._open_sid = open_sid % 255
+        self._srp_id = 1 
         self._state = 'not_initialized'
         self._functions_dict = dict()
         self._functions_dict[4,1] = self.parse_endpoints_object
@@ -146,6 +147,12 @@ Where:
         elif common_hdr[1] == 11:
             print('pcc update msg recved')
         return ('NotImplemented',None) 
+    
+    def generate_pcep_msg(self,msg):
+        print('generating pcep msg')
+        if msg[0] == 'lsp_upd':
+            return self.generate_lsp_upd_msg(msg[1])
+        return None
 
     """
    The format of the OPEN object body is as follows:
@@ -204,7 +211,10 @@ Where:
                                                           PI_flags,))
         return (object_class, object_type, object_length, PI_flags)
 
-        """
+    def generate_common_obj_hdr(self,oc,ot,length,PI_flags=0):
+        return struct.pack(self._common_obj_hdr_fmt,oc,((ot<<4)|PI_flags),length)
+
+    """
         request parameters object
         must be included in pcreq message
         RP Object-Class = 2
@@ -225,7 +235,7 @@ Where:
 
                   Figure 10: RP Object Body Format
         4 - header size, 4 - common obj header size, thats why 8 + offset 
-        """
+    """
 
     def parse_rp_object(self, msg, com_obj_hdr, offset=0):
         rp_object = struct.unpack_from(self._rp_obj_fmt,msg[8+offset:]) 
@@ -346,6 +356,14 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         #placeholder for safety, so we wont iterate forever if we dont know sobj_type (aka != 1)
         return(1000,None,None)
 
+    def generate_ero_subobject(self, rro_subobj):
+        #atm only subj type 1 will be implemented
+        l_flag = rro_subobj[0]
+        ipv4_addr = rro_subobj[1]
+        ipv4_mask = rro_subobj[2]
+        return (8,struct.pack("!BBIBB",(l_flag<<7)&1,8,ipv4_addr,ipv4_mask,0))
+
+
         """
         used in pcrep
         Object-Class = 7
@@ -363,6 +381,16 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
             print(sobj) 
         return ('ero',ero_list)
 
+    def generate_ero_object(self, lsp_obj):
+        size = 0
+        packed_obj = ''
+        for ero_subobj in lsp_obj:
+            packed_subobj = self.generate_ero_subobject(ero_subobj)
+            packed_obj = join((packed_obj,packed_subobj[1]),sep='')
+            size += packed_subobj[0]
+        packed_common_hdr = self.generate_common_obj_hdr(7,1,size+4)
+        return (size+4,join((packed_common_hdr,packed_obj),sep=''))
+ 
 
     """
     only ipv4 and lable subobjects will be implemented atm:
@@ -397,7 +425,6 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         #placeholder for safety, so we wont iterate forever if we dont know sobj_type (aka != 1)
         return(1000,None)
 
-
     """
         used in pcreq
         Object-Class = 8
@@ -413,6 +440,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
             print(sobj)
             print(self.int2ip(sobj[1][2]))
         return ('rro',rro_list)
+
 
     """
    LSPA Object-Class is 9.
@@ -443,8 +471,17 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         L_flag = lspa_obj[5]&1
         print("lspa obj: %s %s %s"%(setup_pri,hold_pri,L_flag,))
         return ('lspa',(setup_pri, hold_pri, L_flag))
-
-
+    
+    def generate_lspa_object(self, lsp_obj):
+        size = 16
+        setup_pri = lsp_obj[0]
+        hold_pri = lsp_obj[1]
+        L_flag = lsp_obj[2]
+        packed_obj = struct.pack(self._lspa_obj_fmt,0,0,0,setup_pri,
+                                 hold_pri, L_flag,0)
+        packed_common_hdr = self.generate_common_obj_hdr(9,1,size+4)
+        return (size+4,join((packed_common_hdr,packed_obj),sep=''))
+    
         """
         TODO: need to implement it, gonna remove extensive description afterwards.
    IRO Object-Class is 10.
@@ -519,6 +556,32 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
             #TODO: add tlv's parsing
         return ('lsp_obj',(plsp_id,d_flag,s_flag,r_flag,a_flag,o_flag))
 
+    def generate_lsp_object(self,lsp_obj):
+        plsp_id = lsp_obj[0]
+        d_flag = lsp_obj[1]
+        s_flag = lsp_obj[2]
+        r_flag = lsp_obj[3]
+        a_flag = lsp_obj[4]
+        o_flag = lsp_obj[5]
+        summary_obj = plsp_id << 12
+        summary_obj &= (d_flag & (s_flag << 1) & (r_flag<<2) & (a_flag << 3) &
+                        o_flag << 4)
+        #w/o tlv support atm, so size = 4
+        size = 4
+        packed_obj = struct.pack("!I", summary_obj)
+        packed_common_hdr = self.generate_common_obj_hdr(32,1,size+4)
+        return (size+4,join((packed_common_hdr,packed_obj),sep=''))
+    
+    def generate_srp_object(self):
+        #w/o tlv support atm
+        size = 8
+        packed_obj = struct.pack(self._srp_obj_fmt,0,self._srp_id)
+        self._srp_id += 1
+        if (self._srp_id > (2<<32-2)):
+            self._srp_id = 1
+        packed_common_hdr = self.generate_common_obj_hdr(33,1,size+4)
+        return (size+4,join((packed_common_hdr,packed_obj),sep=''))
+ 
     def parse_error_msg(self, common_hdr, msg):
         self.parse_common_obj_hdr(msg)
         error_msg = struct.unpack_from(self._error_obj_fmt,msg[8:])
@@ -541,6 +604,10 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         print('parsed_state_report:')
         print(parsed_state_report)
         return('state_report',parsed_state_report)
+ 
+    def parse_ka_msg(self,common_hdr,msg):
+        return ('ka_msg',)
+        
    
     def generate_nopath_obj(self, NI_flag=0, C_flag=0):
         """
@@ -575,8 +642,25 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
     def generate_ka_msg(self):
         common_hdr = struct.pack(self._common_hdr_fmt,32,2,4)
         return common_hdr
-
-    def parse_ka_msg(self,common_hdr,msg):
-        return ('ka_msg',)
-        
-        
+    
+    def generate_lsp_upd_msg(self,obj_list):
+        size = 0
+        packed_lspupd_msg = ''
+        packed_obj = self.generate_srp_object()
+        #size += packed_obj[0]
+        #packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+        for obj in obj_list:
+            if obj[0] == 'lsp_obj':
+                packed_obj = self.generate_lsp_object(obj[1])
+                size += packed_obj[0]
+                packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+            elif obj[0] == 'ero':
+                packed_obj = self.generate_ero_object(obj[1])
+                size += packed_obj[0]
+                packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+            elif obj[0] == 'lspa':
+                packed_obj = self.generate_lspa_object(obj[1])
+                size += packed_obj[0]
+                packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+        common_hdr = struct.pack(self._common_hdr_fmt,32,11,size+4)
+        return join((common_hdr,packed_lspupd_msg),sep='')

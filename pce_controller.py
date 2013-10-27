@@ -27,7 +27,11 @@ def pcc_handler(clsock,sid,controller):
     while True: 
         msg=clsock[0].recv(1000)
         parsed_msg = pcep_context.parse_rcved_msg(msg)
-        controller.handle_pce_message(clsock[1],parsed_msg)
+        result = controller.handle_pce_message(clsock[1],parsed_msg)
+        if result:
+            pcep_msg = pcep_context.generate_pcep_msg(result)
+        if pcep_msg:
+            clsock[0].send(pcep_msg)
         #time.sleep(100)
     clsock[0].close()
 

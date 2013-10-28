@@ -113,7 +113,8 @@ Where:
         self._functions_dict[7,1] = self.parse_ero_object
         self._functions_dict[8,1] = self.parse_rro_object
         self._functions_dict[9,1] = self.parse_lspa_object
-        self._functions_dict[32,1] = self.parse_lsp_object
+        #atm we are going to use _od version for old-draft juniper
+        self._functions_dict[32,1] = self.parse_lsp_object_od
 
     def ip2int(self, addr):                                                               
         return struct.unpack_from("!I", socket.inet_aton(addr))[0]                       
@@ -151,7 +152,7 @@ Where:
     def generate_pcep_msg(self,msg):
         print('generating pcep msg')
         if msg[0] == 'lsp_upd':
-            return self.generate_lsp_upd_msg(msg[1])
+            return self.generate_lsp_upd_msg_od(msg[1])
         return None
 
     """
@@ -300,7 +301,13 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         print(bw_obj)
         return ('bw',(bw_obj[0],))
 
-
+    def generate_bw_object(self, obj):
+        size = 4
+        bw = obj[0]
+        packed_obj = struct.pack(self._bw_obj_fmt,bw)
+        packed_common_hdr = self.generate_common_obj_hdr(5,1,size+4)
+        return (size+4,join((packed_common_hdr,packed_obj),sep=''))
+ 
 
         """
         used in pcreq and pcrep
@@ -381,10 +388,10 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
             print(sobj) 
         return ('ero',ero_list)
 
-    def generate_ero_object(self, lsp_obj):
+    def generate_ero_object(self, obj):
         size = 0
         packed_obj = ''
-        for ero_subobj in lsp_obj:
+        for ero_subobj in obj:
             packed_subobj = self.generate_ero_subobject(ero_subobj)
             packed_obj = join((packed_obj,packed_subobj[1]),sep='')
             size += packed_subobj[0]
@@ -472,11 +479,11 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         print("lspa obj: %s %s %s"%(setup_pri,hold_pri,L_flag,))
         return ('lspa',(setup_pri, hold_pri, L_flag))
     
-    def generate_lspa_object(self, lsp_obj):
+    def generate_lspa_object(self, obj):
         size = 16
-        setup_pri = lsp_obj[0]
-        hold_pri = lsp_obj[1]
-        L_flag = lsp_obj[2]
+        setup_pri = obj[0]
+        hold_pri = obj[1]
+        L_flag = obj[2]
         packed_obj = struct.pack(self._lspa_obj_fmt,0,0,0,setup_pri,
                                  hold_pri, L_flag,0)
         packed_common_hdr = self.generate_common_obj_hdr(9,1,size+4)
@@ -556,21 +563,57 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
             #TODO: add tlv's parsing
         return ('lsp_obj',(plsp_id,d_flag,s_flag,r_flag,a_flag,o_flag))
 
-    def generate_lsp_object(self,lsp_obj):
-        plsp_id = lsp_obj[0]
-        d_flag = lsp_obj[1]
-        s_flag = lsp_obj[2]
-        r_flag = lsp_obj[3]
-        a_flag = lsp_obj[4]
-        o_flag = lsp_obj[5]
+    def generate_lsp_object(self,obj):
+        plsp_id = obj[0]
+        d_flag = obj[1]
+        s_flag = obj[2]
+        r_flag = obj[3]
+        a_flag = obj[4]
+        o_flag = obj[5]
         summary_obj = plsp_id << 12
-        summary_obj &= (d_flag | (s_flag << 1) | (r_flag<<2) | (a_flag << 3) |
+        summary_obj |= (d_flag | (s_flag << 1) | (r_flag<<2) | (a_flag << 3) |
                         o_flag << 4)
         #w/o tlv support atm, so size = 4
         size = 4
         packed_obj = struct.pack("!I", summary_obj)
         packed_common_hdr = self.generate_common_obj_hdr(32,1,size+4)
         return (size+4,join((packed_common_hdr,packed_obj),sep=''))
+    
+    """
+    od suffix means old drafts (preor -07, for example
+    it seems that juniper support -02 atm
+    """
+
+    def parse_lsp_object_od(self, msg, com_obj_hdr, offset=0):
+        lsp_obj = struct.unpack_from(self._lsp_obj_fmt,msg[8+offset:])
+        plsp_id = lsp_obj[0] >> 12
+        d_flag = lsp_obj[0] & 1
+        s_flag = lsp_obj[0] & 2
+        o_flag = lsp_obj[0] & 4
+        r_flag = lsp_obj[0] & 8
+        if com_obj_hdr > 8:
+            print('lsp_obj has TLVs')
+            #TODO: add tlv's parsing
+        return ('lsp_obj',(plsp_id,d_flag,s_flag,o_flag,r_flag,))
+
+    def generate_lsp_object_od(self,obj):
+        plsp_id = obj[0]
+        d_flag = obj[1]
+        s_flag = obj[2]
+        o_flag = obj[3]
+        r_flag = obj[4]
+        summary_obj = plsp_id << 12
+        summary_obj |= (d_flag | (s_flag << 1) | (o_flag<<2) | (r_flag << 3))
+        print(summary_obj)
+        #w/o tlv support atm, so size = 4
+        size = 4
+        packed_obj = struct.pack("!I", summary_obj)
+        packed_common_hdr = self.generate_common_obj_hdr(32,1,size+4)
+        return (size+4,join((packed_common_hdr,packed_obj),sep=''))
+    
+ 
+
+
     
     def generate_srp_object(self):
         #w/o tlv support atm
@@ -660,6 +703,32 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
                 packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
             elif obj[0] == 'lspa':
                 packed_obj = self.generate_lspa_object(obj[1])
+                size += packed_obj[0]
+                packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+        common_hdr = struct.pack(self._common_hdr_fmt,32,11,size+4)
+        return join((common_hdr,packed_lspupd_msg),sep='')
+
+    def generate_lsp_upd_msg_od(self,obj_list):
+        size = 0
+        packed_lspupd_msg = ''
+        packed_obj = self.generate_srp_object()
+        #size += packed_obj[0]
+        #packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+        for obj in obj_list:
+            if obj[0] == 'lsp_obj':
+                packed_obj = self.generate_lsp_object_od(obj[1])
+                size += packed_obj[0]
+                packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+            elif obj[0] == 'ero':
+                packed_obj = self.generate_ero_object(obj[1])
+                size += packed_obj[0]
+                packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+            elif obj[0] == 'lspa':
+                packed_obj = self.generate_lspa_object(obj[1])
+                size += packed_obj[0]
+                packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+            elif obj[0] == 'bw':
+                packed_obj = self.generate_bw_object(obj[1])
                 size += packed_obj[0]
                 packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
         common_hdr = struct.pack(self._common_hdr_fmt,32,11,size+4)

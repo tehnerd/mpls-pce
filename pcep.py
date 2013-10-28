@@ -647,8 +647,8 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         size = 0
         packed_lspupd_msg = ''
         packed_obj = self.generate_srp_object()
-        #size += packed_obj[0]
-        #packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
+        size += packed_obj[0]
+        packed_lspupd_msg = join((packed_lspupd_msg,packed_obj[1]), sep='')
         for obj in obj_list:
             if obj[0] == 'lsp_obj':
                 packed_obj = self.generate_lsp_object(obj[1])

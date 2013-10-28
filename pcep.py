@@ -361,7 +361,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         l_flag = rro_subobj[0]
         ipv4_addr = rro_subobj[1]
         ipv4_mask = rro_subobj[2]
-        return (8,struct.pack("!BBIBB",(l_flag<<7)&1,8,ipv4_addr,ipv4_mask,0))
+        return (8,struct.pack("!BBIBB",(l_flag<<7)|1,8,ipv4_addr,ipv4_mask,0))
 
 
         """
@@ -564,7 +564,7 @@ The BANDWIDTH object may be carried within PCReq and PCRep messages.
         a_flag = lsp_obj[4]
         o_flag = lsp_obj[5]
         summary_obj = plsp_id << 12
-        summary_obj &= (d_flag & (s_flag << 1) & (r_flag<<2) & (a_flag << 3) &
+        summary_obj &= (d_flag | (s_flag << 1) | (r_flag<<2) | (a_flag << 3) |
                         o_flag << 4)
         #w/o tlv support atm, so size = 4
         size = 4

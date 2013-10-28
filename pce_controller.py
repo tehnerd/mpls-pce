@@ -32,6 +32,7 @@ def pcc_handler(clsock,sid,controller):
             pcep_msg = pcep_context.generate_pcep_msg(result)
         if pcep_msg:
             clsock[0].send(pcep_msg)
+            pcep_msg = None
         #time.sleep(100)
     clsock[0].close()
 
